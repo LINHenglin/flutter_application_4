@@ -1,27 +1,30 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'dart:async';
+import 'package:vibration/vibration.dart';
+import 'package:flutter/foundation.dart';
+import 'sound_manager.dart';
 
 class TrainingModeScreen extends StatefulWidget {
   final int gridSize;
-
-  const TrainingModeScreen({Key? key, required this.gridSize})
-    : super(key: key);
+  const TrainingModeScreen({Key? key, this.gridSize = 3}) : super(key: key);
 
   @override
   _TrainingModeScreenState createState() => _TrainingModeScreenState();
 }
 
 class _TrainingModeScreenState extends State<TrainingModeScreen> {
-  List<int> _gridNumbers = []; // Numbers displayed on the grid
-  int _nextNumberToClick = 1; // The next number the user needs to click
-  Map<int, Color> _buttonColors = {}; // To store the color of each button
-
   Timer? _timer;
+  Timer? _countdownTimer;
   int _elapsedTime = 0;
-  bool _gameOver = false;
-
-  late int _totalNumbers;
+  bool _isGameOver = false;
+  Set<int> _clickedNumbers = {};
+  int _currentNumber = 1;
+  List<int> _gridNumbers = [];
+  Map<int, Color> _buttonColors = {};
+  bool _isCountingDown = true;
+  int _countdown = 3;
+  final SoundManager _soundManager = SoundManager();
 
   final Color _defaultButtonColor = Colors.blue;
   final Color _correctButtonColor = Colors.green;
@@ -30,46 +33,43 @@ class _TrainingModeScreenState extends State<TrainingModeScreen> {
   @override
   void initState() {
     super.initState();
-    _totalNumbers = widget.gridSize * widget.gridSize;
+    debugPrint('初始化训练模式...');
+    _soundManager.initialize();
     _initializeGame();
-    _startTimer();
+    _startCountdown();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _countdownTimer?.cancel();
+    _soundManager.dispose();
     super.dispose();
   }
 
-  void _initializeGame() {
-    _timer?.cancel();
-    _elapsedTime = 0;
-    _gameOver = false;
+  void _startCountdown() {
+    debugPrint('开始倒计时...');
+    _countdown = 3;
+    _isCountingDown = true;
 
-    final random = Random();
-    List<int> numbersPool;
-
-    if (widget.gridSize == 2) {
-      numbersPool = List.generate(4, (index) => index + 1);
-    } else {
-      numbersPool = List.generate(_totalNumbers, (index) => index + 1);
-    }
-
-    numbersPool.shuffle(random);
-    _gridNumbers =
-        numbersPool.take(min(_totalNumbers, numbersPool.length)).toList();
-    _gridNumbers.shuffle(random);
-
-    _buttonColors = Map.fromIterable(
-      _gridNumbers,
-      key: (number) => number,
-      value: (number) => _defaultButtonColor,
-    );
-
-    _nextNumberToClick = 1;
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      debugPrint('倒计时: $_countdown');
+      setState(() {
+        if (_countdown > 0) {
+          _countdown--;
+        } else {
+          debugPrint('倒计时结束，开始游戏');
+          timer.cancel();
+          _isCountingDown = false;
+          _startTimer();
+        }
+      });
+    });
   }
 
   void _startTimer() {
+    debugPrint('开始游戏计时');
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _elapsedTime++;
@@ -81,15 +81,41 @@ class _TrainingModeScreenState extends State<TrainingModeScreen> {
     _timer?.cancel();
   }
 
-  void _handleButtonClick(int clickedNumber) {
-    if (_gameOver) return;
+  void _initializeGame() {
+    final totalNumbers = widget.gridSize * widget.gridSize;
+    final random = Random();
+    List<int> numbersPool = List.generate(totalNumbers, (index) => index + 1);
+    numbersPool.shuffle(random);
+    _gridNumbers = numbersPool;
 
-    if (clickedNumber == _nextNumberToClick) {
+    _clickedNumbers.clear();
+    _currentNumber = 1;
+    _elapsedTime = 0;
+    _isGameOver = false;
+
+    _buttonColors = Map.fromIterable(
+      _gridNumbers,
+      key: (number) => number,
+      value: (number) => _defaultButtonColor,
+    );
+  }
+
+  void _handleNumberClick(int clickedNumber) async {
+    if (_isGameOver || _isCountingDown) return;
+
+    await _soundManager.playClickSound();
+    if (!kIsWeb && (await Vibration.hasVibrator() ?? false)) {
+      Vibration.vibrate(duration: 50);
+    }
+
+    if (clickedNumber == _currentNumber) {
       setState(() {
         _buttonColors[clickedNumber] = _correctButtonColor;
-        _nextNumberToClick++;
-        if (_nextNumberToClick > _totalNumbers) {
-          _gameOver = true;
+        _clickedNumbers.add(clickedNumber);
+        _currentNumber++;
+
+        if (_currentNumber > widget.gridSize * widget.gridSize) {
+          _isGameOver = true;
           _stopTimer();
           _showWinDialog();
         }
@@ -115,14 +141,16 @@ class _TrainingModeScreenState extends State<TrainingModeScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('恭喜！'),
-          content: Text('你成功按顺序点击了所有数字！\n用时: $_elapsedTime 秒'),
+          content: Text('你完成了训练！\n用时: $_elapsedTime 秒'),
           actions: <Widget>[
             TextButton(
-              child: const Text('再玩一次'),
+              child: const Text('重新开始'),
               onPressed: () {
                 Navigator.of(context).pop();
-                _initializeGame();
-                _startTimer();
+                setState(() {
+                  _initializeGame();
+                  _startCountdown();
+                });
               },
             ),
             TextButton(
@@ -141,71 +169,74 @@ class _TrainingModeScreenState extends State<TrainingModeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('训练模式: ${widget.gridSize}x${widget.gridSize}'),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      appBar: AppBar(title: const Text('训练模式')),
+      body: Stack(
         children: [
-          Expanded(
-            flex: 1,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Text(
-                  '时间: $_elapsedTime 秒',
-                  style: const TextStyle(fontSize: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 1,
+                child: Center(
+                  child: Text(
+                    '用时: $_elapsedTime 秒',
+                    style: const TextStyle(fontSize: 24),
+                  ),
                 ),
-                const Text('请按顺序点击以下数字', style: TextStyle(fontSize: 20)),
-                if (_gameOver && _nextNumberToClick > _totalNumbers)
-                  const Text(
-                    '完成！',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: GridView.builder(
-              padding: const EdgeInsets.all(20),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: widget.gridSize,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
               ),
-              itemCount: _gridNumbers.length,
-              itemBuilder: (context, index) {
-                final number = _gridNumbers[index];
-                final bool isDisabled = _gameOver;
-
-                double fontSize = 24;
-                if (widget.gridSize >= 4) {
-                  fontSize = 18;
-                }
-
-                return ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    backgroundColor: _buttonColors[number],
-                    splashFactory:
-                        _buttonColors[number] == _correctButtonColor
-                            ? NoSplash.splashFactory
-                            : null,
+              Expanded(
+                flex: 2,
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(20),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: widget.gridSize,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
                   ),
-                  onPressed:
-                      isDisabled ? null : () => _handleButtonClick(number),
-                  child: Text('$number', style: TextStyle(fontSize: fontSize)),
-                );
-              },
-            ),
+                  itemCount: widget.gridSize * widget.gridSize,
+                  itemBuilder: (context, index) {
+                    final number = _gridNumbers[index];
+                    final bool isClicked = _clickedNumbers.contains(number);
+
+                    double fontSize = 24;
+                    if (widget.gridSize >= 4) {
+                      fontSize = 18;
+                    }
+
+                    return ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero,
+                        ),
+                        backgroundColor: _buttonColors[number],
+                        splashFactory:
+                            isClicked ? NoSplash.splashFactory : null,
+                      ),
+                      onPressed: _isGameOver || _isCountingDown
+                          ? null
+                          : () => _handleNumberClick(number),
+                      child:
+                          Text('$number', style: TextStyle(fontSize: fontSize)),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
+          if (_isCountingDown)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Text(
+                  '$_countdown',
+                  style: const TextStyle(
+                    fontSize: 120,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

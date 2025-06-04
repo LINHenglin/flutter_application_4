@@ -6,24 +6,39 @@ class SoundManager {
   factory SoundManager() => _instance;
   SoundManager._internal();
 
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioPlayer _player = AudioPlayer();
+  bool _isInitialized = false;
+
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+
+    try {
+      await _player.setSource(AssetSource('sounds/click.mp3'));
+      _isInitialized = true;
+      debugPrint('音效系统初始化成功');
+    } catch (e) {
+      debugPrint('音效系统初始化失败: $e');
+    }
+  }
 
   Future<void> playClickSound() async {
+    if (!_isInitialized) {
+      debugPrint('音效系统未初始化，跳过播放');
+      return;
+    }
+
     try {
-      debugPrint('正在播放音效...');
-      // 设置音量
-      await _audioPlayer.setVolume(1.0);
-      // 先停止当前播放
-      await _audioPlayer.stop();
-      // 重新加载并播放音效
-      await _audioPlayer.play(AssetSource('sounds/点击.mp3'));
-      debugPrint('音效播放完成');
+      await _player.seek(Duration.zero);
+      await _player.resume();
+      debugPrint('播放点击音效');
     } catch (e) {
-      debugPrint('音效播放失败: $e');
+      debugPrint('播放音效失败: $e');
     }
   }
 
   void dispose() {
-    _audioPlayer.dispose();
+    _player.dispose();
+    _isInitialized = false;
+    debugPrint('音效系统已释放');
   }
 }

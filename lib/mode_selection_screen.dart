@@ -4,7 +4,7 @@ import 'package:flutter_application_4/number_game_screen.dart'; // Will be used 
 import 'package:flutter_application_4/challenge_mode_screen.dart'; // Import ChallengeModeScreen
 
 class ModeSelectionScreen extends StatelessWidget {
-  const ModeSelectionScreen({Key? key}) : super(key: key);
+  const ModeSelectionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

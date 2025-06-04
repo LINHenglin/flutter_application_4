@@ -7,7 +7,7 @@ class NumberGameScreen extends StatefulWidget {
   // Removed onLevelComplete and onChallengeTimeout callbacks
   // Level logic will be handled by parent in challenge mode
 
-  const NumberGameScreen({Key? key, required this.gridSize}) : super(key: key);
+  const NumberGameScreen({super.key, required this.gridSize});
 
   @override
   _NumberGameScreenState createState() => _NumberGameScreenState();
@@ -15,8 +15,7 @@ class NumberGameScreen extends StatefulWidget {
 
 class _NumberGameScreenState extends State<NumberGameScreen> {
   List<int> _gridNumbers = []; // Numbers displayed on the grid
-  // Removed _nextNumberToClick from here, managed by parent in challenge mode
-  // int _nextNumberToClick = 1;
+  int _nextNumberToClick = 1; // 添加这个变量
   Map<int, Color> _buttonColors = {}; // To store the color of each button
 
   // Use internal timer and elapsed time only for training mode
@@ -78,14 +77,11 @@ class _NumberGameScreenState extends State<NumberGameScreen> {
     _gridNumbers.shuffle(random);
 
     // Initialize button colors to default
-    _buttonColors = Map.fromIterable(
-      _gridNumbers,
-      key: (number) => number,
-      value: (number) => _defaultButtonColor,
-    );
+    _buttonColors = {
+      for (var number in _gridNumbers) number: _defaultButtonColor
+    };
 
-    // Removed _nextNumberToClick initialization from here
-    // _nextNumberToClick = 1;
+    _nextNumberToClick = 1; // 重置这个变量
     _clickedNumbers = {}; // Reset clicked numbers for challenge mode
   }
 
@@ -103,8 +99,9 @@ class _NumberGameScreenState extends State<NumberGameScreen> {
   }
 
   void _handleButtonClick(int clickedNumber) {
-    if (!_isChallengeMode && _trainingGameOver)
+    if (!_isChallengeMode && _trainingGameOver) {
       return; // Prevent clicks in training mode if game over
+    }
 
     if (!_isChallengeMode) {
       // Training mode logic
@@ -141,8 +138,9 @@ class _NumberGameScreenState extends State<NumberGameScreen> {
 
       // For now, just update local color for feedback, parent will overwrite
       setState(() {
-        if (_clickedNumbers.contains(clickedNumber))
+        if (_clickedNumbers.contains(clickedNumber)) {
           return; // Ignore if already correctly clicked
+        }
 
         if (clickedNumber == _challengeCurrentNumber) {
           // Correct click in challenge mode
@@ -306,17 +304,15 @@ class _NumberGameScreenState extends State<NumberGameScreen> {
                     ),
                     backgroundColor: _buttonColors[number],
                     // Disable splash effect for already clicked correct numbers
-                    splashFactory:
-                        _buttonColors[number] == _correctButtonColor
-                            ? NoSplash.splashFactory
-                            : null,
+                    splashFactory: _buttonColors[number] == _correctButtonColor
+                        ? NoSplash.splashFactory
+                        : null,
                   ),
-                  onPressed:
-                      isDisabled
-                          ? null
-                          : () {
-                            _handleButtonClick(number);
-                          },
+                  onPressed: isDisabled
+                      ? null
+                      : () {
+                          _handleButtonClick(number);
+                        },
                   child: Text(
                     '$number',
                     style: TextStyle(

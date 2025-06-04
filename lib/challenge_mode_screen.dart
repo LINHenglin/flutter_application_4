@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:vibration/vibration.dart';
+import 'package:flutter/foundation.dart';
 import 'sound_manager.dart';
 
 class ChallengeModeScreen extends StatefulWidget {
-  const ChallengeModeScreen({super.key});
+  const ChallengeModeScreen({Key? key}) : super(key: key);
 
   @override
   _ChallengeModeScreenState createState() => _ChallengeModeScreenState();
@@ -13,13 +14,16 @@ class ChallengeModeScreen extends StatefulWidget {
 
 class _ChallengeModeScreenState extends State<ChallengeModeScreen> {
   Timer? _timer;
+  Timer? _countdownTimer;
   int _totalElapsedTime = 0;
   int _currentLevel = 0;
   bool _isGameOver = false;
-  final Set<int> _clickedNumbers = {};
+  Set<int> _clickedNumbers = {};
   int _currentNumber = 1;
   List<int> _gridNumbers = [];
-  Map<int, Color> _buttonColors = {}; // 添加按钮颜色映射
+  Map<int, Color> _buttonColors = {};
+  bool _isCountingDown = true;
+  int _countdown = 3;
   final SoundManager _soundManager = SoundManager();
 
   // 关卡配置：从2x2开始，每关增加一个维度
@@ -32,19 +36,46 @@ class _ChallengeModeScreenState extends State<ChallengeModeScreen> {
   @override
   void initState() {
     super.initState();
-    _startTimer();
-    _initializeLevel();
+    debugPrint('初始化游戏...');
     _soundManager.initialize();
+    _initializeLevel();
+    _startCountdown();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _countdownTimer?.cancel();
     _soundManager.dispose();
     super.dispose();
   }
 
+  void _startCountdown() {
+    debugPrint('开始倒计时...');
+    _countdown = 3;
+    _isCountingDown = true;
+
+    // 取消之前的计时器
+    _countdownTimer?.cancel();
+
+    // 创建新的计时器
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      debugPrint('倒计时: $_countdown');
+      setState(() {
+        if (_countdown > 0) {
+          _countdown--;
+        } else {
+          debugPrint('倒计时结束，开始游戏');
+          timer.cancel();
+          _isCountingDown = false;
+          _startTimer();
+        }
+      });
+    });
+  }
+
   void _startTimer() {
+    debugPrint('开始游戏计时');
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _totalElapsedTime++;
@@ -71,17 +102,18 @@ class _ChallengeModeScreenState extends State<ChallengeModeScreen> {
     _currentNumber = 1;
 
     // 初始化按钮颜色
-    _buttonColors = {
-      for (var number in _gridNumbers) number: _defaultButtonColor
-    };
+    _buttonColors = Map.fromIterable(
+      _gridNumbers,
+      key: (number) => number,
+      value: (number) => _defaultButtonColor,
+    );
   }
 
   void _handleNumberClick(int clickedNumber) async {
-    if (_isGameOver) return;
+    if (_isGameOver || _isCountingDown) return;
 
-    // 播放音效和震动
     await _soundManager.playClickSound();
-    if (await Vibration.hasVibrator() ?? false) {
+    if (!kIsWeb && (await Vibration.hasVibrator() ?? false)) {
       Vibration.vibrate(duration: 50);
     }
 
@@ -178,52 +210,73 @@ class _ChallengeModeScreenState extends State<ChallengeModeScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('挑战模式')),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
         children: [
-          Expanded(
-            flex: 1,
-            child: Center(
-              child: Text(
-                '总时间: $_totalElapsedTime 秒',
-                style: const TextStyle(fontSize: 24),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: GridView.builder(
-              padding: const EdgeInsets.all(20),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: currentGridSize,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: totalNumbers,
-              itemBuilder: (context, index) {
-                final number = _gridNumbers[index];
-                final bool isClicked = _clickedNumbers.contains(number);
-
-                double fontSize = 24;
-                if (currentGridSize >= 4) {
-                  fontSize = 18;
-                }
-
-                return ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    backgroundColor: _buttonColors[number],
-                    splashFactory: isClicked ? NoSplash.splashFactory : null,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 1,
+                child: Center(
+                  child: Text(
+                    '总时间: $_totalElapsedTime 秒',
+                    style: const TextStyle(fontSize: 24),
                   ),
-                  onPressed:
-                      _isGameOver ? null : () => _handleNumberClick(number),
-                  child: Text('$number', style: TextStyle(fontSize: fontSize)),
-                );
-              },
-            ),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(20),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: currentGridSize,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: totalNumbers,
+                  itemBuilder: (context, index) {
+                    final number = _gridNumbers[index];
+                    final bool isClicked = _clickedNumbers.contains(number);
+
+                    double fontSize = 24;
+                    if (currentGridSize >= 4) {
+                      fontSize = 18;
+                    }
+
+                    return ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero,
+                        ),
+                        backgroundColor: _buttonColors[number],
+                        splashFactory:
+                            isClicked ? NoSplash.splashFactory : null,
+                      ),
+                      onPressed: _isGameOver || _isCountingDown
+                          ? null
+                          : () => _handleNumberClick(number),
+                      child:
+                          Text('$number', style: TextStyle(fontSize: fontSize)),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
+          if (_isCountingDown)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Text(
+                  '$_countdown',
+                  style: const TextStyle(
+                    fontSize: 120,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

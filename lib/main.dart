@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
 }
 
 class ModeSelectionScreen extends StatelessWidget {
-  const ModeSelectionScreen({Key? key}) : super(key: key);
+  const ModeSelectionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +65,7 @@ class ModeSelectionScreen extends StatelessWidget {
 }
 
 class LevelSelectionScreen extends StatelessWidget {
-  const LevelSelectionScreen({Key? key}) : super(key: key);
+  const LevelSelectionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
